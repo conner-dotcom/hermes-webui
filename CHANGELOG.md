@@ -4,6 +4,7 @@
 ## [Unreleased]
 
 ### Changed
+- **Added an Operating Console for Hermes-as-company-OS visibility.** A new top-level System tab inventories profiles, scheduled jobs, MCP servers/tools, plugins, runtime/gateway health, and active config/model signals, with quick links and a context-aware “Chat with this context” action.
 - **Profiles now show human-readable display names and expandable identity/tool details.** Profile cards and the profile dropdown prefer the resolved person/agent name over Slack-ID directory names, while keeping the underlying profile ID in metadata. The profile detail view now opens SOUL.md, profile memory, toolset/MCP summaries, and agent memory for inspection.
 - **Refreshed the default WebUI look with Disco Nexus/Canvas UX patterns.** The base palette now uses Disco purple/blue gradients, softer app chrome, rounded card surfaces, KPI-style profile hero panels, avatar initials, richer hover states, and expandable detail cards that match the newer Disco dashboard language.
 

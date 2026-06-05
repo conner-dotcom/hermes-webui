@@ -39,7 +39,7 @@ let _logsSeverityFilter = 'all';
 const APP_TITLEBAR_KEYS = {
   chat: 'tab_chat', tasks: 'tab_tasks', skills: 'tab_skills',
   memory: 'tab_memory', workspaces: 'tab_workspaces',
-  profiles: 'tab_profiles', todos: 'tab_todos', insights: 'tab_insights', logs: 'tab_logs', settings: 'tab_settings',
+  profiles: 'tab_profiles', todos: 'tab_todos', insights: 'tab_insights', system: 'tab_system', logs: 'tab_logs', settings: 'tab_settings',
 };
 
 /**
@@ -202,6 +202,140 @@ function _resyncChatSidebarAfterPanelSwitch() {
   else run();
 }
 
+
+let _systemConsoleSnapshot = null;
+
+function _systemConsoleCount(value){
+  if(Array.isArray(value)) return value.length;
+  if(value && Array.isArray(value.items)) return value.items.length;
+  if(value && Array.isArray(value.jobs)) return value.jobs.length;
+  if(value && Array.isArray(value.profiles)) return value.profiles.length;
+  if(value && Array.isArray(value.servers)) return value.servers.length;
+  if(value && Array.isArray(value.tools)) return value.tools.length;
+  if(value && typeof value.count === 'number') return value.count;
+  return 0;
+}
+function _systemConsoleArr(value, keys){
+  if(Array.isArray(value)) return value;
+  for(const key of keys||[]){ if(value && Array.isArray(value[key])) return value[key]; }
+  return [];
+}
+function _systemConsoleStatusClass(ok){ return ok ? 'ok' : 'warn'; }
+function _systemConsoleText(value, fallback='—'){
+  if(value===null||value===undefined||value==='') return fallback;
+  if(typeof value==='string') return value;
+  if(typeof value==='number'||typeof value==='boolean') return String(value);
+  return fallback;
+}
+function _systemConsoleSafe(value){
+  return String(_systemConsoleText(value)).replace(/[&<>"]/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+}
+async function _systemConsoleFetch(path){
+  try{ return {ok:true, data:await api(path)}; }
+  catch(error){ return {ok:false, error:error&&error.message?error.message:String(error||'Request failed')}; }
+}
+function _systemConsoleKpi(label, value, sub='', tone=''){
+  return `<div class="system-console-kpi ${tone}"><div class="system-console-kpi-label">${_systemConsoleSafe(label)}</div><div class="system-console-kpi-value">${_systemConsoleSafe(value)}</div><div class="system-console-kpi-sub">${_systemConsoleSafe(sub)}</div></div>`;
+}
+function _systemConsoleCard(title, body, action=''){
+  return `<section class="system-console-card"><div class="system-console-card-head"><h3>${_systemConsoleSafe(title)}</h3>${action}</div>${body}</section>`;
+}
+function _systemConsoleRow(label, value, tone=''){
+  return `<div class="system-console-row"><span>${_systemConsoleSafe(label)}</span><strong class="${tone}">${_systemConsoleSafe(value)}</strong></div>`;
+}
+function _systemConsoleJobStatus(job){
+  if(!job) return 'unknown';
+  if(job.enabled===false) return 'disabled';
+  if(job.state==='paused') return 'paused';
+  if(job.state==='error'||job.last_status==='error'||job.last_error||job.last_delivery_error) return 'needs attention';
+  if(job.state==='completed') return 'completed';
+  return job.state||'scheduled';
+}
+function _systemConsoleAppendComposer(draft){
+  const composer = $('msg') || document.getElementById('msg');
+  if(!composer) return false;
+  const current=String(composer.value||'');
+  composer.value=current.trim()?`${current.replace(/\s+$/,'')}\n\n${draft}`:draft;
+  composer.focus();
+  try{composer.setSelectionRange(composer.value.length, composer.value.length);}catch(_e){}
+  composer.dispatchEvent(new Event('input',{bubbles:true}));
+  if(typeof autoResize==='function') autoResize();
+  if(typeof updateSendBtn==='function') updateSendBtn();
+  return true;
+}
+function systemConsoleChat(kind='overview'){
+  const snap=_systemConsoleSnapshot||{};
+  const summary=snap.summary||{};
+  const draft = `You are helping me operate Hermes as Disco's company OS. Use the current WebUI System Console context.\n\nFocus: ${kind}\nProfiles: ${summary.profiles||0}\nCrons: ${summary.crons||0} total, ${summary.crons_attention||0} need attention\nMCP: ${summary.mcp_servers||0} servers, ${summary.mcp_tools||0} tools\nPlugins: ${summary.plugins||0}\nGateway: ${summary.gateway||'unknown'}\n\nTell me what matters, what is misconfigured, and what I should change next.`;
+  if(_systemConsoleAppendComposer(draft)){
+    switchPanel('chat');
+    if(typeof showToast==='function') showToast('System context added to chat', 1800);
+  }
+}
+function renderSystemConsole(results){
+  const profiles = _systemConsoleArr(results.profiles.data, ['profiles']);
+  const crons = _systemConsoleArr(results.crons.data, ['jobs']);
+  const mcpServers = _systemConsoleArr(results.mcpServers.data, ['servers']);
+  const mcpTools = _systemConsoleArr(results.mcpTools.data, ['tools']);
+  const plugins = _systemConsoleArr(results.plugins.data, ['plugins','items']);
+  const settings = results.settings.data || {};
+  const agent = results.agent.data || {};
+  const gateway = results.gateway.data || {};
+  const system = results.system.data || {};
+  const cronAttention = crons.filter(j=>_systemConsoleJobStatus(j)==='needs attention').length;
+  const enabledCrons = crons.filter(j=>j && j.enabled!==false && j.state!=='paused').length;
+  const pausedCrons = crons.filter(j=>j && (j.state==='paused'||j.enabled===false)).length;
+  const activeProfile = profiles.find(p=>p&&p.is_active) || profiles[0] || {};
+  const gatewayStatus = agent.gateway_chat && agent.gateway_chat.enabled ? 'gateway chat enabled' : (gateway.gateway_running||gateway.running?'running':'check status');
+  const model = settings.default_model || settings.model || settings.model_name || (activeProfile.model||'configured per profile');
+  const provider = settings.provider || activeProfile.provider || 'configured';
+  const summary = {profiles:profiles.length, crons:crons.length, crons_attention:cronAttention, mcp_servers:mcpServers.length, mcp_tools:mcpTools.length, plugins:plugins.length, gateway:gatewayStatus};
+  _systemConsoleSnapshot = {summary, profiles, crons, mcpServers, mcpTools, plugins, settings, agent, gateway, system};
+  const failures = Object.entries(results).filter(([,r])=>!r.ok);
+  const jobsPreview = crons.slice(0,6).map(j=>_systemConsoleRow(j.name||j.id||'Untitled job', `${_systemConsoleJobStatus(j)} · ${j.schedule_display||j.schedule||'no schedule'} · next ${j.next_run_at||'—'}`, _systemConsoleJobStatus(j)==='needs attention'?'warn':'')).join('') || '<div class="system-console-empty">No scheduled jobs found for the active profile.</div>';
+  const profilesPreview = profiles.slice(0,6).map(p=>_systemConsoleRow(p.display_name||p.name, `${p.name||'profile'} · ${p.provider||'provider?'} · ${p.model||'model?'}`, p.is_active?'ok':'')).join('') || '<div class="system-console-empty">No profiles returned.</div>';
+  const html = `
+    <div class="system-console-hero">
+      <div><div class="system-console-eyebrow">Hermes Company OS</div><h2>Operating Console</h2><p>Live setup inventory for profiles, crons, tools, config, gateway health, and context-aware chat.</p></div>
+      <button type="button" class="btn primary" onclick="systemConsoleChat('overview')">Chat with this context</button>
+    </div>
+    <div class="system-console-kpis">
+      ${_systemConsoleKpi('Profiles', profiles.length, `${activeProfile.display_name||activeProfile.name||'active profile'} active`, 'ok')}
+      ${_systemConsoleKpi('Crons', crons.length, `${enabledCrons} active · ${pausedCrons} paused`, cronAttention?'warn':'ok')}
+      ${_systemConsoleKpi('MCP tools', mcpTools.length, `${mcpServers.length} servers`, 'ok')}
+      ${_systemConsoleKpi('Plugins', plugins.length, 'loaded / visible', '')}
+    </div>
+    ${failures.length?`<div class="system-console-alert">${failures.length} inventory calls failed: ${failures.map(([k,r])=>`${k}: ${r.error}`).join(' · ')}</div>`:''}
+    <div class="system-console-grid">
+      ${_systemConsoleCard('Runtime', _systemConsoleRow('Gateway', gatewayStatus) + _systemConsoleRow('System health', results.system.ok?'available':'unavailable', results.system.ok?'ok':'warn') + _systemConsoleRow('Agent health', results.agent.ok?'available':'unavailable', results.agent.ok?'ok':'warn'))}
+      ${_systemConsoleCard('Config', _systemConsoleRow('Provider', provider) + _systemConsoleRow('Model', model) + _systemConsoleRow('WebUI settings', results.settings.ok?'loaded':'unavailable', results.settings.ok?'ok':'warn'))}
+      ${_systemConsoleCard('Scheduled jobs', jobsPreview, '<button type="button" class="system-console-link" onclick="switchPanel(\'tasks\')">Open jobs</button>')}
+      ${_systemConsoleCard('Agent profiles', profilesPreview, '<button type="button" class="system-console-link" onclick="switchPanel(\'profiles\')">Open profiles</button>')}
+      ${_systemConsoleCard('Tools & MCP', _systemConsoleRow('MCP servers', mcpServers.length) + _systemConsoleRow('MCP tools', mcpTools.length) + _systemConsoleRow('Plugins', plugins.length), '<button type="button" class="system-console-link" onclick="switchSettingsSection(\'plugins\');switchPanel(\'settings\')">Configure</button>')}
+      ${_systemConsoleCard('Next move', '<p class="system-console-copy">This is the P1 inventory layer. Next: all-profile cron aggregation, safe config tree editor, and object-scoped chat threads for every cron/profile/tool.</p>', '<button type="button" class="system-console-link" onclick="systemConsoleChat(\'roadmap\')">Ask agent</button>')}
+    </div>`;
+  const content=$('systemConsoleContent');
+  if(content) content.innerHTML=html;
+  const status=$('systemConsoleStatus');
+  if(status) status.textContent=`${profiles.length} profiles · ${crons.length} crons (${cronAttention} need attention) · ${mcpServers.length} MCP servers · ${failures.length} failed calls`;
+}
+async function loadSystemConsole(force=false){
+  const content=$('systemConsoleContent');
+  if(content && force) content.innerHTML='<div class="system-console-loading">Refreshing Hermes operating system state…</div>';
+  const results = {
+    system: await _systemConsoleFetch('/api/system/health'),
+    agent: await _systemConsoleFetch('/api/health/agent'),
+    profiles: await _systemConsoleFetch('/api/profiles'),
+    crons: await _systemConsoleFetch('/api/crons'),
+    mcpServers: await _systemConsoleFetch('/api/mcp/servers'),
+    mcpTools: await _systemConsoleFetch('/api/mcp/tools'),
+    gateway: await _systemConsoleFetch('/api/gateway/status'),
+    plugins: await _systemConsoleFetch('/api/plugins'),
+    settings: await _systemConsoleFetch('/api/settings'),
+  };
+  renderSystemConsole(results);
+}
+
 async function switchPanel(name, opts = {}) {
   const nextPanel = name || 'chat';
   const prevPanel = _currentPanel;
@@ -245,7 +379,7 @@ async function switchPanel(name, opts = {}) {
   // showing-<name> class on <main>; no class means chat (the default).
   const mainEl = document.querySelector('main.main');
   if (mainEl) {
-    ['settings','skills','memory','tasks','kanban','workspaces','profiles','insights','logs','plugin'].forEach(p => {
+    ['settings','skills','memory','tasks','kanban','workspaces','profiles','insights','system','logs','plugin'].forEach(p => {
       mainEl.classList.toggle('showing-' + p, nextPanel === p);
     });
   }
@@ -258,6 +392,7 @@ async function switchPanel(name, opts = {}) {
   if (nextPanel === 'profiles') await loadProfilesPanel();
   if (nextPanel === 'todos') loadTodos();
   if (nextPanel === 'insights') await loadInsights();
+  if (nextPanel === 'system') await loadSystemConsole();
   if (nextPanel === 'logs') await loadLogs();
   _syncLogsAutoRefresh();
   if (typeof _syncSystemHealthMonitorVisibility === 'function') _syncSystemHealthMonitorVisibility();
@@ -5878,7 +6013,7 @@ function switchSettingsSection(name){
     _currentPanel = 'settings';
     var mainEl = document.querySelector('main.main');
     if (mainEl) {
-      ['settings','skills','memory','tasks','kanban','workspaces','profiles','insights','logs','plugin'].forEach(function(p) {
+      ['settings','skills','memory','tasks','kanban','workspaces','profiles','insights','system','logs','plugin'].forEach(function(p) {
         mainEl.classList.toggle('showing-' + p, p === 'settings');
       });
     }
@@ -6767,7 +6902,7 @@ async function switchPluginPage(event, path, label) {
   _currentPanel = 'plugin';
   const mainEl = document.querySelector('main.main');
   if (mainEl) {
-    ['settings','skills','memory','tasks','kanban','workspaces','profiles','insights','logs','plugin'].forEach(p => {
+    ['settings','skills','memory','tasks','kanban','workspaces','profiles','insights','system','logs','plugin'].forEach(p => {
       mainEl.classList.toggle('showing-' + p, p === 'plugin');
     });
   }

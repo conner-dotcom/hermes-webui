@@ -1487,7 +1487,8 @@ const _THEMES=[
   {name:'System', value:'system', colors:['#FBFCFF','#080B16','#7C3AED']},
 ];
 const _SKINS=[
-  {name:'Default',  colors:['#7C3AED','#2563EB','#06B6D4']},
+  {name:'Nexus',   colors:['#7C3AED','#2563EB','#06B6D4']},
+  {name:'Default',  colors:['#C6AC8F','#A7895F','#7A5F3B']},
   {name:'Ares',     colors:['#FF4444','#CC3333','#992222']},
   {name:'Mono',     colors:['#CCCCCC','#999999','#666666']},
   {name:'Graphite', colors:['#FFFFFF','#D6D6D6','#242424']},
@@ -1520,7 +1521,7 @@ function _normalizeAppearance(theme,skin){
   const rawSkin=typeof skin==='string'?skin.trim().toLowerCase():'';
   const legacy=_LEGACY_THEME_MAP[rawTheme];
   const nextTheme=legacy?legacy.theme:(_VALID_THEMES.has(rawTheme)?rawTheme:'dark');
-  const nextSkin=_VALID_SKINS.has(rawSkin)?rawSkin:(legacy?legacy.skin:'default');
+  const nextSkin=_VALID_SKINS.has(rawSkin)?rawSkin:(legacy?legacy.skin:'nexus');
   return {theme:nextTheme,skin:nextSkin};
 }
 
