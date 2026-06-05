@@ -1,7 +1,7 @@
 {
   "version": 2,
   "framework": null,
-  "buildCommand": "cp static/index-vercel.html static/index-vercel.html",
+  "buildCommand": "echo 'static site — no build'",
   "outputDirectory": "static",
   "installCommand": "echo 'no install needed'",
   "rewrites": [
