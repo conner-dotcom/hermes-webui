@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "name": "hermes-webui",
+  "buildCommand": "echo 'static site — no build step'",
+  "outputDirectory": "static",
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "http://100.93.48.92:8787/api/$1" },
+    { "source": "/static/(.*)", "destination": "/$1" },
+    { "source": "/(.*)", "destination": "/index-vercel.html" }
+  ]
+}
