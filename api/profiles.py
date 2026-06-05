@@ -1072,6 +1072,134 @@ def _get_profile_skills_stats(profile_dir: Path) -> tuple[int, int]:
     return res
 
 
+def _read_profile_text_file(profile_dir: Path, relative_path: str, limit: int = 20000) -> dict:
+    """Read a profile text file for authenticated profile inspection.
+
+    The WebUI intentionally never exposes .env/auth/token files here.  These
+    files are identity and memory documents operators already expect to inspect.
+    """
+    path = profile_dir / relative_path
+    if not path.exists() or not path.is_file():
+        return {"exists": False, "content": "", "truncated": False, "path": relative_path}
+    try:
+        content = path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        logger.debug("Failed to read profile text file %s", path, exc_info=True)
+        return {"exists": True, "content": "", "truncated": False, "path": relative_path, "error": "Could not read file"}
+    truncated = len(content) > limit
+    if truncated:
+        content = content[:limit] + "\n\n… truncated …"
+    return {"exists": True, "content": content, "truncated": truncated, "path": relative_path}
+
+
+def _profile_first_line(text: str) -> str:
+    for raw in (text or "").splitlines():
+        line = raw.strip().strip("# ").strip()
+        if line:
+            return line
+    return ""
+
+
+def _profile_display_name(profile_name: str, profile_dir: Path, is_default: bool) -> str:
+    """Return a human-readable label for a profile.
+
+    Disco personal profiles are keyed by Slack IDs, but their USER.md normally
+    starts with the person's name.  Band/worker profiles usually identify
+    themselves in SOUL.md headings.  Fall back to the profile id when no stable
+    label is present.
+    """
+    user_text = _read_profile_text_file(profile_dir, "memories/USER.md", limit=2000).get("content", "")
+    user_line = _profile_first_line(user_text)
+    patterns = (
+        r"^User is\s+([^,.\n]+)",
+        r"^([A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){0,4})(?:,|\(|:|\s+-|\s+at\s+Disco|\s+prefers\b)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, user_line)
+        if match:
+            candidate = match.group(1).strip()
+            if candidate and len(candidate) <= 80 and not candidate.lower().startswith(("brevity", "for ")):
+                return candidate
+
+    soul_text = _read_profile_text_file(profile_dir, "SOUL.md", limit=2000).get("content", "")
+    soul_line = _profile_first_line(soul_text)
+    heading_match = re.search(r"^([A-Z][A-Za-z'’.-]+)(?:\s+[—-].*)?$", soul_line)
+    if heading_match:
+        return heading_match.group(1).strip()
+    you_are_match = re.search(r"You are\s+([^,\.\n—-]+)", soul_line)
+    if you_are_match:
+        candidate = you_are_match.group(1).strip()
+        if candidate and len(candidate) <= 80:
+            return candidate
+
+    if is_default and profile_name == "default":
+        return "Default"
+    return profile_name
+
+
+def _profile_tools_summary(profile_dir: Path) -> dict:
+    """Summarize enabled tool surfaces without exposing secret values."""
+    config_path = profile_dir / "config.yaml"
+    cfg = {}
+    if config_path.exists():
+        try:
+            import yaml as _yaml
+            loaded = _yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                cfg = loaded
+        except Exception:
+            logger.debug("Failed to read profile tool config %s", config_path, exc_info=True)
+
+    def _clean_string_list(value) -> list[str]:
+        if isinstance(value, str):
+            return [value]
+        if not isinstance(value, list):
+            return []
+        return [str(item) for item in value if str(item).strip()]
+
+    platform_toolsets = {}
+    raw_platform_toolsets = cfg.get("platform_toolsets")
+    if isinstance(raw_platform_toolsets, dict):
+        for platform, toolsets in raw_platform_toolsets.items():
+            cleaned = _clean_string_list(toolsets)
+            if cleaned:
+                platform_toolsets[str(platform)] = cleaned
+
+    mcp_servers = []
+    raw_mcp_servers = cfg.get("mcp_servers")
+    if isinstance(raw_mcp_servers, dict):
+        for name, server_cfg in raw_mcp_servers.items():
+            enabled = True
+            if isinstance(server_cfg, dict) and server_cfg.get("enabled") is False:
+                enabled = False
+            mcp_servers.append({"name": str(name), "enabled": enabled})
+    mcp_servers.sort(key=lambda item: item["name"])
+
+    raw_agent_cfg = cfg.get("agent")
+    agent_cfg = raw_agent_cfg if isinstance(raw_agent_cfg, dict) else {}
+    raw_plugin_cfg = cfg.get("plugins")
+    plugin_cfg = raw_plugin_cfg if isinstance(raw_plugin_cfg, dict) else {}
+    return {
+        "toolsets": _clean_string_list(cfg.get("toolsets")),
+        "disabled_toolsets": _clean_string_list(agent_cfg.get("disabled_toolsets")),
+        "platform_toolsets": platform_toolsets,
+        "mcp_servers": mcp_servers,
+        "plugin_names": sorted(str(name) for name in plugin_cfg.keys()),
+    }
+
+
+def _profile_detail_payload(profile_name: str, profile_dir: Path, is_default: bool) -> dict:
+    return {
+        "display_name": _profile_display_name(profile_name, profile_dir, is_default),
+        "files": {
+            "soul": _read_profile_text_file(profile_dir, "SOUL.md"),
+            "user_profile": _read_profile_text_file(profile_dir, "memories/USER.md"),
+            "memory": _read_profile_text_file(profile_dir, "memories/MEMORY.md"),
+        },
+        "tools": _profile_tools_summary(profile_dir),
+    }
+
+
 def list_profiles_api() -> list:
     """List all profiles with metadata, serialized for JSON response."""
     try:
@@ -1085,8 +1213,10 @@ def list_profiles_api() -> list:
     result = []
     for p in infos:
         enabled_count, total_count = _get_profile_skills_stats(p.path)
+        detail = _profile_detail_payload(p.name, p.path, p.is_default)
         result.append({
             'name': p.name,
+            'display_name': detail['display_name'],
             'path': str(p.path),
             'is_default': p.is_default,
             'is_active': p.name == active,
@@ -1097,6 +1227,8 @@ def list_profiles_api() -> list:
             'skill_count': enabled_count,
             'enabled_skills': enabled_count,
             'total_skills': total_count,
+            'files': detail['files'],
+            'tools': detail['tools'],
         })
     return result
 
@@ -1104,8 +1236,10 @@ def list_profiles_api() -> list:
 def _default_profile_dict() -> dict:
     """Fallback profile dict when hermes_cli is not importable."""
     enabled_count, compatible_count = _get_profile_skills_stats(_DEFAULT_HERMES_HOME)
+    detail = _profile_detail_payload('default', _DEFAULT_HERMES_HOME, True)
     return {
         'name': 'default',
+        'display_name': detail['display_name'],
         'path': str(_DEFAULT_HERMES_HOME),
         'is_default': True,
         'is_active': True,
@@ -1116,6 +1250,8 @@ def _default_profile_dict() -> dict:
         'skill_count': enabled_count,
         'enabled_skills': enabled_count,
         'total_skills': compatible_count,
+        'files': detail['files'],
+        'tools': detail['tools'],
     }
 
 

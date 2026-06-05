@@ -3,6 +3,10 @@
 
 ## [Unreleased]
 
+### Changed
+- **Profiles now show human-readable display names and expandable identity/tool details.** Profile cards and the profile dropdown prefer the resolved person/agent name over Slack-ID directory names, while keeping the underlying profile ID in metadata. The profile detail view now opens SOUL.md, profile memory, toolset/MCP summaries, and agent memory for inspection.
+- **Refreshed the default WebUI look with Disco Nexus/Canvas UX patterns.** The base palette now uses Disco purple/blue gradients, softer app chrome, rounded card surfaces, KPI-style profile hero panels, avatar initials, richer hover states, and expandable detail cards that match the newer Disco dashboard language.
+
 ## [v0.51.267] — 2026-06-04 — Release II (stage-r17 — TTS + CSRF forwarded-header security hardening)
 
 ### Security

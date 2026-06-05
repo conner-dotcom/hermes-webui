@@ -58,11 +58,15 @@ def test_list_profiles_api_contains_formatted_skills(monkeypatch, tmp_path):
     _write_skill(p_default, "a1")
     _write_skill(p_default, "a2")
     _write_config(p_default, ["a2"])
+    (p_default / "SOUL.md").write_text("You are Elvis, Disco's company AI agent.\n", encoding="utf-8")
 
     _write_skill(p_fintech, "f1")
     _write_skill(p_fintech, "f2")
     _write_skill(p_fintech, "f3")
     _write_config(p_fintech, ["f2", "f3"])
+    (p_fintech / "memories").mkdir(parents=True, exist_ok=True)
+    (p_fintech / "memories" / "USER.md").write_text("Lydia Bonakdarpour, Disco Network. Customer Success.\n", encoding="utf-8")
+    (p_fintech / "SOUL.md").write_text("You are Elvis, Disco's AI agent running in a personal profile.\n", encoding="utf-8")
 
     fake_infos = [
         FakeProfile("default", p_default),
@@ -95,6 +99,13 @@ def test_list_profiles_api_contains_formatted_skills(monkeypatch, tmp_path):
     assert by_name["default"]["total_skills"] == 2
     assert by_name["fintech"]["enabled_skills"] == 1
     assert by_name["fintech"]["total_skills"] == 3
+
+    # Human-readable profile labels and inspectable files are included for the UI.
+    assert by_name["default"]["display_name"] == "Elvis"
+    assert by_name["fintech"]["display_name"] == "Lydia Bonakdarpour"
+    assert by_name["fintech"]["files"]["soul"]["exists"] is True
+    assert by_name["fintech"]["files"]["user_profile"]["content"].startswith("Lydia Bonakdarpour")
+    assert by_name["fintech"]["tools"]["mcp_servers"] == []
 
 @requires_agent_modules
 def test_no_skills_dir(tmp_path):
@@ -140,3 +151,31 @@ def test_skills_stats_cache(tmp_path):
     profiles._SKILLS_STATS_CACHE.clear()
     enabled, compat = profiles._get_profile_skills_stats(tmp_path)
     assert enabled == 2 and compat == 2
+
+
+@requires_agent_modules
+def test_profile_tools_summary_lists_toolsets_and_mcp_servers(tmp_path):
+    cfg = {
+        "toolsets": ["terminal", "file"],
+        "agent": {"disabled_toolsets": ["browser"]},
+        "platform_toolsets": {"slack": ["web", "skills"]},
+        "mcp_servers": {
+            "github": {"command": "secret-command"},
+            "snowflake": {"enabled": False, "env": {"TOKEN": "do-not-expose"}},
+        },
+        "plugins": {"kanban": {"enabled": True}},
+    }
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump(cfg), encoding="utf-8")
+
+    summary = profiles._profile_tools_summary(tmp_path)
+
+    assert summary["toolsets"] == ["terminal", "file"]
+    assert summary["disabled_toolsets"] == ["browser"]
+    assert summary["platform_toolsets"] == {"slack": ["web", "skills"]}
+    assert summary["mcp_servers"] == [
+        {"name": "github", "enabled": True},
+        {"name": "snowflake", "enabled": False},
+    ]
+    assert summary["plugin_names"] == ["kanban"]
+    assert "secret-command" not in str(summary)
+    assert "do-not-expose" not in str(summary)

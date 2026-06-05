@@ -1482,12 +1482,12 @@ window.addEventListener('resize',()=>{
 
 // ── Appearance helpers (theme = light/dark/system, skin = accent color) ──────
 const _THEMES=[
-  {name:'Light', value:'light', colors:['#FEFCF7','#FAF7F0','#B8860B']},
-  {name:'Dark', value:'dark', colors:['#0D0D1A','#141425','#FFD700']},
-  {name:'System', value:'system', colors:['#FEFCF7','#0D0D1A','#B8860B']},
+  {name:'Light', value:'light', colors:['#FBFCFF','#F6F8FC','#7C3AED']},
+  {name:'Dark', value:'dark', colors:['#080B16','#0D1224','#A78BFA']},
+  {name:'System', value:'system', colors:['#FBFCFF','#080B16','#7C3AED']},
 ];
 const _SKINS=[
-  {name:'Default',  colors:['#FFD700','#FFBF00','#CD7F32']},
+  {name:'Default',  colors:['#7C3AED','#2563EB','#06B6D4']},
   {name:'Ares',     colors:['#FF4444','#CC3333','#992222']},
   {name:'Mono',     colors:['#CCCCCC','#999999','#666666']},
   {name:'Graphite', colors:['#FFFFFF','#D6D6D6','#242424']},
@@ -1842,11 +1842,11 @@ function applyBotName(){
     api(_checkUrl).then(d=>{if(!_testUpdates)sessionStorage.setItem('hermes-update-checked','1');if((d.webui&&d.webui.behind>0)||(d.agent&&d.agent.behind>0))_showUpdateBanner(d);}).catch(()=>{});
   }
   // Fetch active profile
-  try{const p=await api('/api/profile/active');S.activeProfile=p.name||'default';S.activeProfileIsDefault=!!p.is_default;}catch(e){S.activeProfile='default';S.activeProfileIsDefault=true;}
+  try{const p=await api('/api/profile/active');S.activeProfile=p.name||'default';S.activeProfileDisplayName=p.display_name||S.activeProfile;S.activeProfileIsDefault=!!p.is_default;}catch(e){S.activeProfile='default';S.activeProfileDisplayName='';S.activeProfileIsDefault=true;}
   applyBotName();
   // Update profile chip label immediately
   const profileLabel=$('profileChipLabel');
-  if(profileLabel) profileLabel.textContent=S.activeProfile||'default';
+  if(profileLabel) profileLabel.textContent=S.activeProfileDisplayName||S.activeProfile||'default';
   // Fetch available models without blocking session restore. The static HTML
   // options are enough for first paint; the dynamic provider list can settle
   // after the saved session is visible.

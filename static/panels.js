@@ -5066,6 +5066,59 @@ function _refreshProfileSwitchBackground(gen){
   }).catch(function(){});
 }
 
+function _profileDisplayName(p) {
+  return (p && (p.display_name || p.name)) ? String(p.display_name || p.name) : '';
+}
+
+function _profileIdMeta(p) {
+  if (!p || !p.display_name || p.display_name === p.name) return '';
+  return `ID ${p.name}`;
+}
+
+function _profileInitials(name) {
+  const s = String(name || '').trim();
+  if (!s) return 'AI';
+  const words = s.split(/[^A-Za-z0-9]+/).filter(Boolean);
+  const letters = (words.length >= 2 ? words[0][0] + words[1][0] : s.slice(0, 2)).toUpperCase();
+  return letters.replace(/[^A-Z0-9]/g, '') || 'AI';
+}
+
+function _profileFileBlock(label, file) {
+  const f = file || {};
+  const content = f.exists ? (f.content || '') : 'Not found';
+  const status = f.exists ? (f.truncated ? ' · truncated' : '') : ' · missing';
+  return `
+    <details class="profile-detail-section" open>
+      <summary>${esc(label)}<span>${esc(f.path || '')}${esc(status)}</span></summary>
+      <pre class="profile-detail-pre">${esc(content)}</pre>
+    </details>`;
+}
+
+function _profileToolsBlock(tools) {
+  const tdata = tools || {};
+  const toolsets = Array.isArray(tdata.toolsets) ? tdata.toolsets : [];
+  const disabled = Array.isArray(tdata.disabled_toolsets) ? tdata.disabled_toolsets : [];
+  const platformToolsets = tdata.platform_toolsets && typeof tdata.platform_toolsets === 'object' ? tdata.platform_toolsets : {};
+  const mcpServers = Array.isArray(tdata.mcp_servers) ? tdata.mcp_servers : [];
+  const plugins = Array.isArray(tdata.plugin_names) ? tdata.plugin_names : [];
+  const platformRows = Object.keys(platformToolsets).sort().map(platform => {
+    const vals = Array.isArray(platformToolsets[platform]) ? platformToolsets[platform] : [];
+    return `<div class="detail-row"><div class="detail-row-label">${esc(platform)}</div><div class="detail-row-value">${vals.map(v => `<span class="detail-badge">${esc(v)}</span>`).join(' ') || '<span style="color:var(--muted)">None</span>'}</div></div>`;
+  }).join('');
+  const mcpText = mcpServers.length
+    ? mcpServers.map(s => `${s.name}${s.enabled === false ? ' (disabled)' : ''}`).join(', ')
+    : 'None';
+  return `
+    <details class="profile-detail-section" open>
+      <summary>Tools<span>toolsets + MCP servers</span></summary>
+      <div class="detail-row"><div class="detail-row-label">Default toolsets</div><div class="detail-row-value">${toolsets.length ? toolsets.map(v => `<span class="detail-badge">${esc(v)}</span>`).join(' ') : '<span style="color:var(--muted)">Inherited/default</span>'}</div></div>
+      ${disabled.length ? `<div class="detail-row"><div class="detail-row-label">Disabled</div><div class="detail-row-value">${disabled.map(v => `<span class="detail-badge">${esc(v)}</span>`).join(' ')}</div></div>` : ''}
+      ${platformRows || '<div class="detail-row"><div class="detail-row-label">Platform toolsets</div><div class="detail-row-value"><span style="color:var(--muted)">Inherited/default</span></div></div>'}
+      <div class="detail-row"><div class="detail-row-label">MCP servers</div><div class="detail-row-value">${esc(mcpText)}</div></div>
+      ${plugins.length ? `<div class="detail-row"><div class="detail-row-label">Plugins</div><div class="detail-row-value">${esc(plugins.join(', '))}</div></div>` : ''}
+    </details>`;
+}
+
 async function loadProfilesPanel() {
   const panel = $('profilesPanel');
   if (!panel) return;
@@ -5077,6 +5130,7 @@ async function loadProfilesPanel() {
     explainer.className = 'profile-card profile-help-card';
     explainer.innerHTML = `
       <div class="profile-card-header">
+        <div class="profile-card-avatar" aria-hidden="true">AI</div>
         <div style="min-width:0;flex:1">
           <div class="profile-card-name">Profiles vs workspaces</div>
           <div class="profile-card-meta">Use profiles for how the agent works; use workspaces for what files it works on.</div>
@@ -5099,7 +5153,10 @@ async function loadProfilesPanel() {
       const card = document.createElement('div');
       card.className = 'profile-card';
       card.dataset.name = p.name;
+      const displayName = _profileDisplayName(p);
+      const idMeta = _profileIdMeta(p);
       const meta = [];
+      if (idMeta) meta.push(idMeta);
       if (p.model) meta.push(p.model.split('/').pop());
       if (p.provider) meta.push(p.provider);
       if (p.total_skills && p.total_skills > 0) meta.push(t('profile_skill_count', p.total_skills).replace(String(p.total_skills), `${p.enabled_skills} / ${p.total_skills}`));
@@ -5111,8 +5168,9 @@ async function loadProfilesPanel() {
       const defaultBadge = p.is_default ? ` <span style="opacity:.5">${esc(t('profile_default_label'))}</span>` : '';
       card.innerHTML = `
         <div class="profile-card-header">
+          <div class="profile-card-avatar" aria-hidden="true">${esc(_profileInitials(displayName))}</div>
           <div style="min-width:0;flex:1">
-            <div class="profile-card-name${isActive ? ' is-active' : ''}">${gwDot}${esc(p.name)}${defaultBadge}${activeBadge}</div>
+            <div class="profile-card-name${isActive ? ' is-active' : ''}">${gwDot}${esc(displayName)}${defaultBadge}${activeBadge}</div>
             ${meta.length ? `<div class="profile-card-meta">${esc(meta.join(' \u00b7 '))}</div>` : `<div class="profile-card-meta">${esc(t('profile_no_configuration'))}</div>`}
           </div>
         </div>`;
@@ -5159,7 +5217,9 @@ function _renderProfileDetail(p, activeName){
   const body = $('profileDetailBody');
   const empty = $('profileDetailEmpty');
   if (!title || !body) return;
-  title.textContent = p.name;
+  const displayName = _profileDisplayName(p);
+  const idMeta = _profileIdMeta(p);
+  title.textContent = displayName;
   const isActive = p.name === activeName;
   const isDefault = !!p.is_default;
   const statusBadge = isActive
@@ -5171,6 +5231,7 @@ function _renderProfileDetail(p, activeName){
     : `<span class="detail-badge">${esc(t('profile_gateway_stopped'))}</span>`;
   const rows = [];
   rows.push(`<div class="detail-row"><div class="detail-row-label">Status</div><div class="detail-row-value">${statusBadge}${defaultBadge}</div></div>`);
+  if (idMeta) rows.push(`<div class="detail-row"><div class="detail-row-label">Profile ID</div><div class="detail-row-value"><code>${esc(p.name)}</code></div></div>`);
   rows.push(`<div class="detail-row"><div class="detail-row-label">Gateway</div><div class="detail-row-value">${gwBadge}</div></div>`);
   if (p.model) rows.push(`<div class="detail-row"><div class="detail-row-label">Model</div><div class="detail-row-value"><code>${esc(p.model)}</code></div></div>`);
   if (p.provider) rows.push(`<div class="detail-row"><div class="detail-row-label">Provider</div><div class="detail-row-value">${esc(p.provider)}</div></div>`);
@@ -5178,12 +5239,38 @@ function _renderProfileDetail(p, activeName){
   rows.push(`<div class="detail-row"><div class="detail-row-label">API key</div><div class="detail-row-value">${p.has_env ? esc(t('profile_api_keys_configured')) : '<span style="color:var(--muted)">Not configured</span>'}</div></div>`);
   if (p.total_skills && p.total_skills > 0) rows.push(`<div class="detail-row"><div class="detail-row-label">Skills</div><div class="detail-row-value">${esc(t('profile_skill_count', p.total_skills).replace(String(p.total_skills), `${p.enabled_skills} / ${p.total_skills}`))}</div></div>`);
   if (p.default_workspace) rows.push(`<div class="detail-row"><div class="detail-row-label">Default space</div><div class="detail-row-value"><code>${esc(p.default_workspace)}</code></div></div>`);
+  const files = p.files || {};
+  const toolsets = p.tools && Array.isArray(p.tools.toolsets) ? p.tools.toolsets.length : 0;
+  const mcpServers = p.tools && Array.isArray(p.tools.mcp_servers) ? p.tools.mcp_servers.length : 0;
+  const skillText = (p.total_skills && p.total_skills > 0) ? `${p.enabled_skills} / ${p.total_skills}` : 'Inherited';
+  const modelText = p.model ? p.model.split('/').pop() : (p.provider || 'Default');
+  const toolsText = `${toolsets || 'default'} toolsets · ${mcpServers} MCP`;
+  const subtitle = idMeta || (p.is_default ? 'default profile' : p.name);
   body.innerHTML = `
     <div class="main-view-content">
+      <div class="profile-detail-hero">
+        <div class="profile-detail-hero-top">
+          <div class="profile-detail-avatar" aria-hidden="true">${esc(_profileInitials(displayName))}</div>
+          <div class="profile-detail-titleblock">
+            <div class="profile-detail-title">${esc(displayName)}</div>
+            <div class="profile-detail-subtitle">${esc(subtitle)}</div>
+          </div>
+          <div>${statusBadge}${defaultBadge}</div>
+        </div>
+        <div class="profile-detail-stats">
+          <div class="profile-detail-stat"><div class="profile-detail-stat-label">Model</div><div class="profile-detail-stat-value">${esc(modelText)}</div></div>
+          <div class="profile-detail-stat"><div class="profile-detail-stat-label">Skills</div><div class="profile-detail-stat-value">${esc(skillText)}</div></div>
+          <div class="profile-detail-stat"><div class="profile-detail-stat-label">Tools</div><div class="profile-detail-stat-value">${esc(toolsText)}</div></div>
+        </div>
+      </div>
       <div class="detail-card">
         <div class="detail-card-title">Profile</div>
         ${rows.join('')}
       </div>
+      ${_profileFileBlock('SOUL.md', files.soul)}
+      ${_profileFileBlock('Profile memory', files.user_profile)}
+      ${_profileToolsBlock(p.tools)}
+      ${_profileFileBlock('Agent memory', files.memory)}
     </div>`;
   body.style.display = '';
   if (empty) empty.style.display = 'none';
@@ -5264,13 +5351,16 @@ function renderProfileDropdown(data) {
   for (const p of profiles) {
     const opt = document.createElement('div');
     opt.className = 'profile-opt' + (p.name === active ? ' active' : '');
+    const displayName = _profileDisplayName(p);
+    const idMeta = _profileIdMeta(p);
     const meta = [];
+    if (idMeta) meta.push(idMeta);
     if (p.model) meta.push(p.model.split('/').pop());
     if (p.total_skills && p.total_skills > 0) meta.push(t('profile_skill_count', p.total_skills).replace(String(p.total_skills), `${p.enabled_skills} / ${p.total_skills}`));
     const gwDot = `<span class="profile-opt-badge ${p.gateway_running ? 'running' : 'stopped'}"></span>`;
     const checkmark = p.name === active ? ' <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--link)" stroke-width="3" style="vertical-align:-1px"><polyline points="20 6 9 17 4 12"/></svg>' : '';
     const defaultBadge = p.is_default ? ` <span style="opacity:.5;font-weight:400">${esc(t('profile_default_label'))}</span>` : '';
-    opt.innerHTML = `<div class="profile-opt-name">${gwDot}${esc(p.name)}${defaultBadge}${checkmark}</div>` +
+    opt.innerHTML = `<div class="profile-opt-name">${gwDot}${esc(displayName)}${defaultBadge}${checkmark}</div>` +
       (meta.length ? `<div class="profile-opt-meta">${esc(meta.join(' \u00b7 '))}</div>` : '');
     opt.onclick = async () => {
       closeProfileDropdown();
@@ -5327,6 +5417,7 @@ async function switchToProfile(name) {
   const _chip = $('profileChip');
   const _chipLabel = $('profileChipLabel');
   const _prevProfileName = S.activeProfile || 'default';
+  const _prevProfileDisplayName = S.activeProfileDisplayName || _prevProfileName;
   const _switchGen = ++_profileSwitchGeneration;
   if (_chip) { _chip.classList.add('switching'); _chip.disabled = true; }
   // Optimistic name update — shows the target name right away
@@ -5345,6 +5436,9 @@ async function switchToProfile(name) {
     const data = await api('/api/profile/switch', { method: 'POST', body: JSON.stringify({ name }) });
     if (_switchGen !== _profileSwitchGeneration) return;
     S.activeProfile = data.active || name;
+    const activeProfileObj = Array.isArray(data.profiles) ? data.profiles.find(p => p.name === S.activeProfile) : null;
+    S.activeProfileDisplayName = (activeProfileObj && activeProfileObj.display_name) || S.activeProfile;
+    if (_chipLabel) _chipLabel.textContent = S.activeProfileDisplayName || S.activeProfile;
     S.activeProfileIsDefault = !!data.is_default;
 
     // Update composer placeholder and title bar while the core profile-switch
@@ -5460,7 +5554,7 @@ async function switchToProfile(name) {
 
   } catch (e) {
     // Revert the optimistic name update on error
-    if (_switchGen === _profileSwitchGeneration && _chipLabel) _chipLabel.textContent = _prevProfileName;
+    if (_switchGen === _profileSwitchGeneration && _chipLabel) _chipLabel.textContent = _prevProfileDisplayName;
     if (_switchGen === _profileSwitchGeneration) showToast(t('switch_failed') + e.message);
   } finally {
     // Always remove loading indicator regardless of success or failure

@@ -5911,13 +5911,23 @@ def handle_get(handler, parsed) -> bool:
             _is_root_profile,
             get_active_hermes_home,
             get_active_profile_name,
+            list_profiles_api,
         )
 
         active_profile_name = get_active_profile_name()
+        active_display_name = active_profile_name
+        try:
+            for profile in list_profiles_api():
+                if profile.get("name") == active_profile_name:
+                    active_display_name = profile.get("display_name") or active_profile_name
+                    break
+        except Exception:
+            active_display_name = active_profile_name
         return j(
             handler,
             {
                 "name": active_profile_name,
+                "display_name": active_display_name,
                 "path": str(get_active_hermes_home()),
                 "is_default": _is_root_profile(active_profile_name),
             },
