@@ -6,6 +6,7 @@
   "installCommand": "echo 'no install needed'",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "https://dias-mac-studio.tail4f36cb.ts.net/hermes-webui/api/$1" },
+    { "source": "/login", "destination": "https://dias-mac-studio.tail4f36cb.ts.net/hermes-webui/login" },
     { "source": "/static/(.*)", "destination": "/$1" },
     { "source": "/(.*)", "destination": "/index-vercel.html" }
   ]
