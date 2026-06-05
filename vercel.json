@@ -4,9 +4,11 @@
   "buildCommand": "echo 'static site — no build'",
   "outputDirectory": "static",
   "installCommand": "echo 'no install needed'",
-  "rewrites": [
-    { "source": "/login", "destination": "https://dias-mac-studio.tail4f36cb.ts.net/hermes-webui/login" },
-    { "source": "/static/(.*)", "destination": "/$1" },
-    { "source": "/(.*)", "destination": "/index-vercel.html" }
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/proxy?path=$1" },
+    { "handle": "filesystem" },
+    { "src": "/login", "dest": "https://dias-mac-studio.tail4f36cb.ts.net/hermes-webui/login" },
+    { "src": "/static/(.*)", "dest": "/$1" },
+    { "src": "/(.*)", "dest": "/index-vercel.html" }
   ]
 }

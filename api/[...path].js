@@ -36,9 +36,20 @@ function copyRequestHeaders(req, bodyLength) {
   return out;
 }
 
+function targetUrlFor(req) {
+  const url = new URL(req.url || '/', 'https://vercel.local');
+  const pathParam = req.query?.path || url.searchParams.get('path');
+  if (!pathParam) return new URL(`${upstreamBase()}${req.url}`);
+
+  url.searchParams.delete('path');
+  const query = url.searchParams.toString();
+  const apiPath = `/api/${String(pathParam).replace(/^\/+/, '')}`;
+  return new URL(`${upstreamBase()}${apiPath}${query ? `?${query}` : ''}`);
+}
+
 module.exports = async function handler(req, res) {
   const body = await rawBody(req);
-  const target = new URL(req.url, upstreamBase());
+  const target = targetUrlFor(req);
   const headers = copyRequestHeaders(req, body.length);
 
   const proxyReq = https.request(target, {
